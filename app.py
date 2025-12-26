@@ -45,19 +45,17 @@ st.title("🔍 Quality Inspection Checksheet")
 # STEP 1 : SCAN BARCODE
 # =========================================================
 if st.session_state.part_no is None:
-
     st.subheader("Scan Part Barcode")
-
+    
+    # Camera input for barcode scanning
     image = st.camera_input("Open camera and scan barcode")
-
+    
     if image:
-        # ----------------------------------------
-        # PROTOTYPE BARCODE RESULT (SIMULATED)
-        # ----------------------------------------
-        scanned_part_no = "1001"  # Replace with real barcode decode later
-
+        # Simulate barcode decoding
+        scanned_part_no = "1001"  # Replace with real barcode decode logic
+        
         st.session_state.part_no = scanned_part_no
-
+        
         defect_master = pd.read_csv(DEFECT_FILE)
         st.session_state.defects = defect_master[
             defect_master["part_no"] == int(scanned_part_no)
@@ -81,9 +79,7 @@ else:
     st.info(f"Part Number : {part_no}")
 
     if idx < len(defects):
-
         defect = defects[idx]
-
         st.markdown(
             f"""
             ### Defect {idx + 1} of {len(defects)}
@@ -92,7 +88,6 @@ else:
         )
 
         col1, col2 = st.columns(2)
-
         with col1:
             if st.button("✅ OK", use_container_width=True):
                 save_to_excel({
@@ -116,12 +111,18 @@ else:
                 })
                 st.session_state.current_index += 1
                 st.rerun()
-
     else:
         st.success("✔ Inspection Completed")
 
         if st.button("Scan Next Part"):
             reset_system()
+            st.rerun()
+
+        # Clear button for manual reset
+        if st.button("Clear Data"):
+            reset_system()
+            if os.path.exists(EXCEL_FILE):
+                os.remove(EXCEL_FILE)
             st.rerun()
 
 # =========================================================
@@ -134,4 +135,4 @@ if os.path.exists(EXCEL_FILE):
     df_view = pd.read_excel(EXCEL_FILE)
     st.dataframe(df_view, use_container_width=True)
 else:
-    st.write("No inspection data available yet.")
+    st.write("No inspection data available")
