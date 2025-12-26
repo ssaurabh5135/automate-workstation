@@ -2,8 +2,6 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import os
-from pyzbar.pyzbar import decode
-from PIL import Image, ImageEnhance
 
 # ---------------- CONFIG ----------------
 DATA_DIR = "data"
@@ -25,17 +23,6 @@ if "scanned_image" not in st.session_state:
     st.session_state.scanned_image = None
 
 # ---------------- FUNCTIONS ----------------
-def decode_barcode(image):
-    try:
-        enhancer = ImageEnhance.Contrast(image)
-        enhanced = enhancer.enhance(2.0)
-        barcodes = decode(enhanced)
-        if barcodes:
-            return barcodes[0].data.decode('utf-8').strip()
-        return None
-    except:
-        return None
-
 def save_to_excel(data):
     df_new = pd.DataFrame([data])
     if os.path.exists(EXCEL_FILE):
@@ -51,33 +38,37 @@ def reset_system():
     st.session_state.current_index = 0
     st.session_state.scanned_image = None
 
+def load_defects(part_no):
+    try:
+        df_defects = pd.read_csv(DEFECT_FILE)
+        defects = df_defects[df_defects["part_no"].astype(str) == str(part_no)].to_dict("records")
+        if not defects:
+            return [{"defect_code": "GEN", "defect_name": f"Part {part_no}"}]
+        return defects
+    except:
+        return [{"defect_code": "GEN", "defect_name": part_no}]
+
 # ---------------- UI ----------------
-st.title("🔍 Quality Inspection")
+st.title("🔍 Quality Inspection System")
 
 if st.session_state.part_no is None:
-    st.subheader("📷 Scan Barcode")
-    image = st.camera_input("Point at barcode")
+    st.subheader("📦 Enter Part Barcode")
     
-    if image:
-        st.session_state.scanned_image = image
-        with st.spinner("Scanning..."):
-            part_no = decode_barcode(image)
-        
-        if part_no:
-            st.session_state.part_no = part_no
-            try:
-                df_defects = pd.read_csv(DEFECT_FILE)
-                defects = df_defects[df_defects["part_no"].astype(str) == part_no].to_dict("records")
-                if not defects:
-                    defects = [{"defect_code": "GEN", "defect_name": f"Part {part_no}"}]
-                st.session_state.defects = defects
-                st.success(f"✅ Scanned: {part_no}")
-            except:
-                st.session_state.defects = [{"defect_code": "GEN", "defect_name": part_no}]
-            st.rerun()
-        else:
-            st.error("No barcode found")
-            st.image(image)
+    col1, col2 = st.columns(2)
+    with col1:
+        part_no = st.text_input("🔢 Scan/Type Part No", placeholder="Enter barcode number")
+        if st.button("✅ Start Inspection", type="primary"):
+            if part_no:
+                st.session_state.part_no = part_no.strip()
+                st.session_state.defects = load_defects(part_no)
+                st.success(f"✅ Part: {part_no}")
+                st.rerun()
+    
+    with col2:
+        st.image("https://via.placeholder.com/300x200/4CAF50/white?text=Scan+Barcode+Here")
+        uploaded_file = st.file_uploader("📸 Or upload barcode image", type=['png', 'jpg', 'jpeg'])
+        if uploaded_file:
+            st.session_state.scanned_image = uploaded_file
 
 else:
     part_no = st.session_state.part_no
@@ -85,13 +76,14 @@ else:
     idx = st.session_state.current_index
     
     if st.session_state.scanned_image:
-        st.image(st.session_state.scanned_image, caption=part_no)
+        st.image(st.session_state.scanned_image, caption=f"Part: {part_no}", use_column_width=True)
     
-    st.info(f"Part: **{part_no}**")
+    st.info(f"🔧 Inspecting: **{part_no}**")
     
     if idx < len(defects):
         defect = defects[idx]
         st.markdown(f"### {idx+1}/{len(defects)} - **{defect['defect_name']}**")
+        st.caption(f"Code: {defect.get('defect_code', 'N/A')}")
         
         col1, col2 = st.columns(2)
         with col1:
@@ -117,26 +109,32 @@ else:
                 st.session_state.current_index += 1
                 st.rerun()
     else:
-        st.success("✅ Complete!")
+        st.success("🎉 Inspection Complete!")
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("🔄 Next"):
+            if st.button("🔄 Next Part", use_container_width=True, type="primary"):
                 reset_system()
                 st.rerun()
         with col2:
-            if st.button("🗑️ Clear"):
+            if st.button("🗑️ Clear All Data", use_container_width=True):
                 reset_system()
                 if os.path.exists(EXCEL_FILE):
                     os.remove(EXCEL_FILE)
                 st.rerun()
 
+# ---------------- DATA VIEW ----------------
 st.divider()
-st.subheader("📊 Data")
+st.subheader("📊 Inspection Records")
+
 if os.path.exists(EXCEL_FILE):
     df = pd.read_excel(EXCEL_FILE)
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(df, use_container_width=True, hide_index=True)
+    col1, col2 = st.columns(2)
+    col1.metric("Total Records", len(df))
+    col2.metric("OK Rate", f"{len(df[df['Result']=='OK'])/len(df)*100:.1f}%" if len(df)>0 else '0%')
 else:
-    st.info("No data")
+    st.info("👆 Start by entering a part number above")
+
 
 
 
