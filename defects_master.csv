@@ -1,0 +1,6 @@
+part_no,defect_code,defect_name
+1001,D01,Scratch
+1001,D02,Crack
+1001,D03,Color mismatch
+1002,D01,Burr
+1002,D02,Hole offset
