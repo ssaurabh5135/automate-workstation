@@ -1,7 +1,7 @@
 streamlit
-streamlit-camera-input-live
 pandas
 openpyxl
-pillow
-opencv-python
 pyzbar
+opencv-python
+pillow
+numpy
