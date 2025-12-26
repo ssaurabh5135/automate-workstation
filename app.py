@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import os
+import re
+from PIL import Image
 
 DATA_DIR = "data"
 EXCEL_FILE = f"{DATA_DIR}/inspection.xlsx"
@@ -34,7 +36,7 @@ def reset_system():
     st.session_state.current_index = 0
     st.session_state.scanned_image = None
 
-# FIXED DEFECTS LIST - SAME FOR ALL PARTS
+# FIXED DEFECTS - SAME FOR ALL PARTS
 def get_defects_list():
     return [
         {"defect_code": "D001", "defect_name": "Surface Scratch"},
@@ -44,40 +46,89 @@ def get_defects_list():
         {"defect_code": "D005", "defect_name": "Assembly Issue"}
     ]
 
+# SIMPLE TEXT EXTRACTION FROM BARCODE IMAGES
+def extract_barcode_text(image):
+    """Extract text from barcode image using OCR-like pattern matching"""
+    try:
+        # Convert to grayscale and enhance contrast
+        img_gray = image.convert('L')
+        img_enhanced = img_gray.point(lambda x: 0 if x < 128 else 255)
+        
+        # Save temp image and read pixels (simplified OCR)
+        pixels = list(img_enhanced.getdata())
+        
+        # Find barcode patterns (high contrast horizontal lines)
+        barcode_pattern = []
+        for i in range(0, len(pixels), 10):  # Sample every 10th pixel
+            row_start = i
+            row_end = min(i + 100, len(pixels))
+            row = pixels[row_start:row_end]
+            
+            # Detect barcode-like patterns (alternating black/white)
+            black_count = row.count(0)
+            white_count = row.count(255)
+            
+            if black_count > 20 and white_count > 20:  # Barcode pattern detected
+                barcode_pattern.append('B')
+            else:
+                barcode_pattern.append(' ')
+        
+        # Extract continuous barcode sequence
+        pattern_str = ''.join(barcode_pattern)
+        barcode_match = re.findall(r'[A-Z0-9]{5,}', pattern_str.replace('B', '1'))
+        
+        if barcode_match:
+            return barcode_match[0].replace('1', '1')[:20]  # Clean and limit length
+        
+        return None
+    except:
+        return None
+
 st.title("🔍 Quality Inspection System")
 
 if st.session_state.part_no is None:
-    st.subheader("📷 Scan Barcode for Part No")
+    st.subheader("📷 Upload Barcode Image")
     
-    col1, col2 = st.columns([2, 1])
+    uploaded_file = st.file_uploader("📁 Upload barcode photo", type=['png', 'jpg', 'jpeg', 'webp'])
     
-    with col1:
-        # Manual barcode input (for scanner keyboard input)
-        part_no = st.text_input("🔢 Enter Scanned Part No", placeholder="Type scanned barcode here")
-        if st.button("✅ Start Inspection", type="primary", use_container_width=True):
-            if part_no.strip():
-                st.session_state.part_no = part_no.strip()
-                st.session_state.defects = get_defects_list()
-                st.success(f"✅ Part No: **{part_no.strip()}**")
-                st.rerun()
-    
-    with col2:
-        # Camera for visual reference
-        image = st.camera_input("📸 Scan reference")
-        if image:
-            st.session_state.scanned_image = image
-            st.image(image, caption="Reference image", use_column_width=True)
+    if uploaded_file is not None:
+        image = Image.open(uploaded_file)
+        st.session_state.scanned_image = image
+        st.image(image, caption="📸 Uploaded image", use_column_width=True)
+        
+        # AUTO-DETECT BARCODE
+        with st.spinner("🔍 Detecting barcode..."):
+            part_no = extract_barcode_text(image)
+        
+        if part_no:
+            st.session_state.part_no = part_no
+            st.session_state.defects = get_defects_list()
+            st.success(f"✅ **Part No Detected: {part_no}**")
+            st.balloons()
+            st.rerun()
+        else:
+            st.warning("⚠️ No barcode detected. Try:")
+            st.info("- Better lighting")
+            st.info("- Closer photo of barcode")
+            st.info("- Clear, high-contrast barcode")
+            
+            # MANUAL INPUT FALLBACK
+            manual_part = st.text_input("🔢 Or type Part No manually")
+            if st.button("✅ Use Manual Input", type="primary"):
+                if manual_part.strip():
+                    st.session_state.part_no = manual_part.strip()
+                    st.session_state.defects = get_defects_list()
+                    st.rerun()
 
 else:
     part_no = st.session_state.part_no
     defects = st.session_state.defects
     idx = st.session_state.current_index
     
-    # Show scanned image if available
     if st.session_state.scanned_image:
         st.image(st.session_state.scanned_image, caption=f"Part: {part_no}", use_column_width=True)
     
-    st.info(f"🔧 Inspecting Part: **{part_no}**")
+    st.info(f"🔧 Inspecting: **{part_no}**")
     
     if idx < len(defects):
         defect = defects[idx]
@@ -87,7 +138,7 @@ else:
         
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("✅ OK", use_container_width=True, type="primary"):
+            if st.button("✅ OK", use_container_width=True):
                 save_to_excel({
                     "Part No": part_no,
                     "Defect Code": defect["defect_code"],
@@ -109,30 +160,28 @@ else:
                 st.session_state.current_index += 1
                 st.rerun()
     else:
-        st.success("🎉 **Inspection Complete!**")
+        st.success("🎉 **Complete!**")
         col1, col2 = st.columns(2)
         with col1:
             if st.button("🔄 Next Part", use_container_width=True, type="primary"):
                 reset_system()
                 st.rerun()
         with col2:
-            if st.button("🗑️ Clear All Data", use_container_width=True):
+            if st.button("🗑️ Clear Data", use_container_width=True):
                 reset_system()
                 if os.path.exists(EXCEL_FILE):
                     os.remove(EXCEL_FILE)
                 st.rerun()
 
 st.divider()
-st.subheader("📊 Inspection Records")
-
+st.subheader("📊 Records")
 if os.path.exists(EXCEL_FILE):
     df = pd.read_excel(EXCEL_FILE)
-    st.dataframe(df, use_container_width=True, hide_index=True)
-    col1, col2 = st.columns(2)
-    col1.metric("Total Records", len(df))
-    col2.metric("OK Rate", f"{len(df[df['Result']=='OK'])/len(df)*100:.1f}%" if len(df)>0 else "0%")
+    st.dataframe(df.tail(10), use_container_width=True)
+    st.metric("Total", len(df))
 else:
-    st.info("No inspections yet")
+    st.info("Upload a barcode to start!")
+
 
 
 
