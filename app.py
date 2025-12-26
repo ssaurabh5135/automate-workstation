@@ -3,16 +3,13 @@ import pandas as pd
 from datetime import datetime
 import os
 
-# ---------------- CONFIG ----------------
 DATA_DIR = "data"
 EXCEL_FILE = f"{DATA_DIR}/inspection.xlsx"
-DEFECT_FILE = "defects_master.csv"
 
 os.makedirs(DATA_DIR, exist_ok=True)
 
 st.set_page_config(page_title="Inspection System", layout="centered")
 
-# ---------------- SESSION STATE ----------------
 if "part_no" not in st.session_state:
     st.session_state.part_no = None
 if "defects" not in st.session_state:
@@ -22,7 +19,6 @@ if "current_index" not in st.session_state:
 if "scanned_image" not in st.session_state:
     st.session_state.scanned_image = None
 
-# ---------------- FUNCTIONS ----------------
 def save_to_excel(data):
     df_new = pd.DataFrame([data])
     if os.path.exists(EXCEL_FILE):
@@ -38,59 +34,63 @@ def reset_system():
     st.session_state.current_index = 0
     st.session_state.scanned_image = None
 
-def load_defects(part_no):
-    try:
-        df_defects = pd.read_csv(DEFECT_FILE)
-        defects = df_defects[df_defects["part_no"].astype(str) == str(part_no)].to_dict("records")
-        if not defects:
-            return [{"defect_code": "GEN", "defect_name": f"Part {part_no}"}]
-        return defects
-    except:
-        return [{"defect_code": "GEN", "defect_name": part_no}]
+# FIXED DEFECTS LIST - SAME FOR ALL PARTS
+def get_defects_list():
+    return [
+        {"defect_code": "D001", "defect_name": "Surface Scratch"},
+        {"defect_code": "D002", "defect_name": "Weld Imperfection"},
+        {"defect_code": "D003", "defect_name": "Paint Defect"},
+        {"defect_code": "D004", "defect_name": "Dimension Error"},
+        {"defect_code": "D005", "defect_name": "Assembly Issue"}
+    ]
 
-# ---------------- UI ----------------
 st.title("🔍 Quality Inspection System")
 
 if st.session_state.part_no is None:
-    st.subheader("📦 Enter Part Barcode")
+    st.subheader("📷 Scan Barcode for Part No")
     
-    col1, col2 = st.columns(2)
+    col1, col2 = st.columns([2, 1])
+    
     with col1:
-        part_no = st.text_input("🔢 Scan/Type Part No", placeholder="Enter barcode number")
-        if st.button("✅ Start Inspection", type="primary"):
-            if part_no:
+        # Manual barcode input (for scanner keyboard input)
+        part_no = st.text_input("🔢 Enter Scanned Part No", placeholder="Type scanned barcode here")
+        if st.button("✅ Start Inspection", type="primary", use_container_width=True):
+            if part_no.strip():
                 st.session_state.part_no = part_no.strip()
-                st.session_state.defects = load_defects(part_no)
-                st.success(f"✅ Part: {part_no}")
+                st.session_state.defects = get_defects_list()
+                st.success(f"✅ Part No: **{part_no.strip()}**")
                 st.rerun()
     
     with col2:
-        st.image("https://via.placeholder.com/300x200/4CAF50/white?text=Scan+Barcode+Here")
-        uploaded_file = st.file_uploader("📸 Or upload barcode image", type=['png', 'jpg', 'jpeg'])
-        if uploaded_file:
-            st.session_state.scanned_image = uploaded_file
+        # Camera for visual reference
+        image = st.camera_input("📸 Scan reference")
+        if image:
+            st.session_state.scanned_image = image
+            st.image(image, caption="Reference image", use_column_width=True)
 
 else:
     part_no = st.session_state.part_no
     defects = st.session_state.defects
     idx = st.session_state.current_index
     
+    # Show scanned image if available
     if st.session_state.scanned_image:
         st.image(st.session_state.scanned_image, caption=f"Part: {part_no}", use_column_width=True)
     
-    st.info(f"🔧 Inspecting: **{part_no}**")
+    st.info(f"🔧 Inspecting Part: **{part_no}**")
     
     if idx < len(defects):
         defect = defects[idx]
-        st.markdown(f"### {idx+1}/{len(defects)} - **{defect['defect_name']}**")
-        st.caption(f"Code: {defect.get('defect_code', 'N/A')}")
+        st.markdown(f"### {idx+1}/{len(defects)}")
+        st.markdown(f"**{defect['defect_name']}**")
+        st.caption(f"Code: {defect['defect_code']}")
         
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("✅ OK", use_container_width=True):
+            if st.button("✅ OK", use_container_width=True, type="primary"):
                 save_to_excel({
                     "Part No": part_no,
-                    "Defect Code": defect.get("defect_code", "N/A"),
+                    "Defect Code": defect["defect_code"],
                     "Defect Name": defect["defect_name"],
                     "Result": "OK",
                     "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -101,7 +101,7 @@ else:
             if st.button("❌ NOT OK", use_container_width=True):
                 save_to_excel({
                     "Part No": part_no,
-                    "Defect Code": defect.get("defect_code", "N/A"),
+                    "Defect Code": defect["defect_code"],
                     "Defect Name": defect["defect_name"],
                     "Result": "NOT OK",
                     "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -109,7 +109,7 @@ else:
                 st.session_state.current_index += 1
                 st.rerun()
     else:
-        st.success("🎉 Inspection Complete!")
+        st.success("🎉 **Inspection Complete!**")
         col1, col2 = st.columns(2)
         with col1:
             if st.button("🔄 Next Part", use_container_width=True, type="primary"):
@@ -122,7 +122,6 @@ else:
                     os.remove(EXCEL_FILE)
                 st.rerun()
 
-# ---------------- DATA VIEW ----------------
 st.divider()
 st.subheader("📊 Inspection Records")
 
@@ -131,9 +130,9 @@ if os.path.exists(EXCEL_FILE):
     st.dataframe(df, use_container_width=True, hide_index=True)
     col1, col2 = st.columns(2)
     col1.metric("Total Records", len(df))
-    col2.metric("OK Rate", f"{len(df[df['Result']=='OK'])/len(df)*100:.1f}%" if len(df)>0 else '0%')
+    col2.metric("OK Rate", f"{len(df[df['Result']=='OK'])/len(df)*100:.1f}%" if len(df)>0 else "0%")
 else:
-    st.info("👆 Start by entering a part number above")
+    st.info("No inspections yet")
 
 
 
